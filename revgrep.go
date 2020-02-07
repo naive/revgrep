@@ -286,7 +286,7 @@ func GitPatch(revisionFrom, revisionTo string) (io.Reader, []string, error) {
 	var patch bytes.Buffer
 
 	// check if git repo exists
-	if err := exec.Command("git", "status").Run(); err != nil {
+	if err := exec.Command("git", "status", "--porcelain").Run(); err != nil {
 		// don't return an error, we assume the error is not repo exists
 		return nil, nil, nil
 	}
