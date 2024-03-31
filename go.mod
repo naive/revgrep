@@ -1,3 +1,3 @@
-module github.com/golangci/revgrep
+module github.com/naive/revgrep
 
 go 1.19
