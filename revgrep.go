@@ -334,12 +334,24 @@ func (c *Checker) linesChanged() map[string][]pos {
 	return changes
 }
 
+// readGitDiffStderr returns the error from git diff stderr.
+func readGitDiffStderr(buff bytes.Buffer) error {
+	output, err := io.ReadAll(&buff)
+
+	if err != nil {
+		return fmt.Errorf("could not read git diff stderr: %v", err)
+	}
+	return errors.New(string(output))
+}
+
 // GitPatch returns a patch from a git repository,
 // if no git repository was found and no errors occurred, nil is returned, else an error is returned revisionFrom and revisionTo defines the git diff parameters,
 // if left blank and there are unstaged changes or untracked files, only those will be returned else only check changes since HEAD~.
 // If revisionFrom is set but revisionTo is not, untracked files will be included, to exclude untracked files set revisionTo to HEAD~.
 // It's incorrect to specify revisionTo without a revisionFrom.
 func GitPatch(revisionFrom, revisionTo string) (io.Reader, []string, error) {
+	var errBuff bytes.Buffer
+
 	// check if git repo exists
 	if err := exec.Command("git", "status", "--porcelain").Run(); err != nil {
 		// don't return an error, we assume the error is not repo exists
@@ -372,8 +384,10 @@ func GitPatch(revisionFrom, revisionTo string) (io.Reader, []string, error) {
 		cmd.Args = append(cmd.Args, "--")
 
 		cmd.Stdout = &patch
+		cmd.Stderr = &errBuff
 		if err := cmd.Run(); err != nil {
-			return nil, nil, fmt.Errorf("error executing git diff %q %q: %w", revisionFrom, revisionTo, err)
+			gitDiffStderr := readGitDiffStderr(errBuff)
+			return nil, nil, fmt.Errorf("error executing git diff %q %q: %s\n%v", revisionFrom, revisionTo, err, gitDiffStderr)
 		}
 
 		if revisionTo == "" {
@@ -386,8 +400,10 @@ func GitPatch(revisionFrom, revisionTo string) (io.Reader, []string, error) {
 	// make a patch for unstaged changes
 	cmd := gitDiff("--")
 	cmd.Stdout = &patch
+	cmd.Stderr = &errBuff
 	if err := cmd.Run(); err != nil {
-		return nil, nil, fmt.Errorf("error executing git diff: %w", err)
+		gitDiffStderr := readGitDiffStderr(errBuff)
+		return nil, nil, fmt.Errorf("error executing git diff: %s\n%v", err, gitDiffStderr)
 	}
 	unstaged := patch.Len() > 0
 
@@ -401,8 +417,10 @@ func GitPatch(revisionFrom, revisionTo string) (io.Reader, []string, error) {
 
 	cmd = gitDiff("HEAD~", "--")
 	cmd.Stdout = &patch
+	cmd.Stderr = &errBuff
 	if err := cmd.Run(); err != nil {
-		return nil, nil, fmt.Errorf("error executing git diff HEAD~: %w", err)
+		gitDiffStderr := readGitDiffStderr(errBuff)
+		return nil, nil, fmt.Errorf("error executing git diff HEAD~: %s\n%v", err, gitDiffStderr)
 	}
 
 	return &patch, nil, nil
